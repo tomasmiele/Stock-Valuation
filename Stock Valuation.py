@@ -18,11 +18,15 @@ ticker = input("Type the stock ticker you want to evaluate: ").upper()
 
 stock = yf.Ticker(ticker)
 
+ticker_info = stock.info
+
+industry = ticker_info["industry"]
+
 tickers_info[ticker] = {}
 
 # Prompt and access ChatGPT to get similar companies to the analysed one
-prompt = f"""List 4 US-listed companies similar to {ticker}, with valuation multiples available on yfinance. 
-Output only a Python list of tickers."""
+prompt = f"""prompt = f'List 4 US-listed companies in the "{industry}" industry, similar to {ticker}, 
+with valuation multiples available on yfinance. Output only a Python list of tickers."""
 
 # response = client.chat.completions.create(
 #     model="gpt-4",
@@ -34,14 +38,12 @@ Output only a Python list of tickers."""
 # content = response.choices[0].message.content
 # tickers_list = ast.literal_eval(content)
 
-tickers_list = ["PEP", "MNST", "KDP", "CELH"]
+tickers_list = ["PEP", "KDP", "MNST", "CCEP"]
 
 for t in tickers_list:
     tickers_info[t] = {}
 
 # Calculate the trailing and forward PE of the stock
-ticker_info = stock.info
-
 trailing_PE = round(ticker_info.get("trailingPE"), 2)
 forward_PE = round(ticker_info.get("forwardPE"), 2)
 
@@ -106,8 +108,7 @@ for t in tickers_list:
 
     tickers_info[t]["5y Avg Trailing PE"] = peers_five_y_avg_trailing_pe
 
-print(tickers_info)
-
+# Calculate the average and mean PE's from the 5 companies combined
 trailing_pes = [v['Trailing PE'] for v in tickers_info.values()]
 forward_pes = [v['Forward PE'] for v in tickers_info.values()]
 
@@ -116,6 +117,18 @@ median_trailing_PE = round(statistics.median(trailing_pes), 2)
 avg_forward_PE = round(statistics.mean(forward_pes), 2)
 median_forward_PE = round(statistics.median(forward_pes), 2)
 
-cashflow = yf.Ticker(ticker).cashflow
+# Calculate the difference between the average and median for each company
+tickers_info[ticker]["PE Diff Indust Avg"] = round(avg_trailing_PE / tickers_info[ticker]["Trailing PE"] * 100 - 100, 2)
+tickers_info[ticker]["PE Diff Indust Median"] = round(median_trailing_PE / tickers_info[ticker]["Trailing PE"] * 100 - 100, 2)
+tickers_info[ticker]["Forward PE Diff Indust Avg"] = round(avg_forward_PE / tickers_info[ticker]["Forward PE"] * 100 - 100, 2)
+tickers_info[ticker]["Forward PE Diff Indust Median"] = round(median_forward_PE / tickers_info[ticker]["Forward PE"] * 100 - 100, 2)
+tickers_info[ticker]["5y PE Diff"] = round(tickers_info[ticker]["5y Avg Trailing PE"] / tickers_info[ticker]["Trailing PE"] * 100 - 100, 2)
 
-#print(cashflow)
+for t in tickers_list:
+    tickers_info[t]["PE Diff Indust Avg"] = round(avg_trailing_PE / tickers_info[t]["Trailing PE"] * 100 - 100, 2)
+    tickers_info[t]["PE Diff Indust Median"] = round(median_trailing_PE / tickers_info[t]["Trailing PE"] * 100 - 100, 2)
+    tickers_info[t]["Forward PE Diff Indust Avg"] = round(avg_forward_PE / tickers_info[t]["Forward PE"] * 100 - 100, 2)
+    tickers_info[t]["Forward PE Diff Indust Median"] = round(median_forward_PE / tickers_info[t]["Forward PE"] * 100 - 100, 2)
+    tickers_info[t]["5y PE Diff"] = round(tickers_info[t]["5y Avg Trailing PE"] / tickers_info[t]["Trailing PE"] * 100 - 100, 2)
+
+print(tickers_info)
