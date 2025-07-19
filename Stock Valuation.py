@@ -181,7 +181,7 @@ tickers_info[ticker]["DCF"]["Ajusted FCF"] = fcf
 fcf_growth = round(fcf.sort_index().pct_change().dropna() * 100, 2)
 historical_growth = fcf_growth.mean()
 
-historical_growth = 3.50
+historical_growth = 0.035
 
 cagr_prompt = f"""Search for the forecasted CAGR of the "{industry}" industry **specifically** 
 from either Grand View Research (GVR) or Statista. If available, return **only** the CAGR number. 
@@ -200,30 +200,51 @@ Do not include any units, percent signs, or explanation."""
 # if match:
 #     cagr = float(match.group())
 
-cagr = 6.40
+cagr = 0.064
 
-estimate_growth = 0.8 * historical_growth + 0.2 * cagr
+growth = 0.8 * historical_growth + 0.2 * cagr
 
 tickers_info[ticker]["DCF"]["Historical Growth"] = historical_growth
 tickers_info[ticker]["DCF"]["CAGR"] = cagr
-tickers_info[ticker]["DCF"]["Estimate Growth"] = estimate_growth
+tickers_info[ticker]["DCF"]["Estimate Growth"] = growth
 
 # Forecast
 projected_fcf = []
 last_fcf = fcf.iloc[-1]
 
 for i in range(1, 11):
-    projected_value = last_fcf * ((1 + estimate_growth / 100) ** i)
+    projected_value = last_fcf * ((1 + growth / 100) ** i)
     projected_fcf.append(float(round(projected_value, 2)))
-
-print(projected_fcf)
-
-p_fcf = ticker_info["marketCap"] / fcf
-
-print(p_fcf.median())
 
 tickers_info[ticker]["DCF"]["Projected FCF"] = projected_fcf
 
+ticker_PFCF = ticker_info["marketCap"] / fcf
+ticker_PFCF = float(round(ticker_PFCF.median(), 2))
+
+tickers_info[ticker]["DCF"]["PFCF"] = ticker_PFCF
+tickers_info[ticker]["DCF"]["TV - PFCF"] = projected_fcf[-1] * ticker_PFCF
+
+tnx = yf.Ticker("^TNX")
+
+r = (round(tnx.history(period="1d")["Close"].iloc[-1] , 2) + 3) / 100
+
+tickers_info[ticker]["DCF"]["TV - Perpetuity"] = float(projected_fcf[-1] * (1 + growth) / (r - growth))
+
+discounted_fcf = []
+sum_dis_fcf = 0
+
+for i in range(10):
+    year = i + 1  
+    discounted_value = projected_fcf[i] / ((1 + r) ** year)
+    discounted_fcf.append(float(round(discounted_value, 2)))
+    sum_dis_fcf += discounted_value
+
+tickers_info[ticker]["DCF"]["Discounted FCF"] = discounted_fcf
+tickers_info[ticker]["DCF"]["Discounted TV - PFCF"] = float(tickers_info[ticker]["DCF"]["TV - PFCF"] / ((1 + r) ** 10))
+tickers_info[ticker]["DCF"]["Discounted TV - Perpetuity"] = float(tickers_info[ticker]["DCF"]["TV - Perpetuity"] / ((1 + r) ** 10) )
+tickers_info[ticker]["DCF"]["Valuation - PFCF"] = float(discounted_value + tickers_info[ticker]["DCF"]["Discounted TV - PFCF"])
+tickers_info[ticker]["DCF"]["Valuation - Perpetuity"] = float(discounted_value + tickers_info[ticker]["DCF"]["Discounted TV - Perpetuity"])
+
 # Repeat the process to the others companies
 
-#print(tickers_info)
+print(tickers_info)
