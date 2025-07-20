@@ -25,6 +25,8 @@ industry = ticker_info["industry"]
 
 tickers_info[ticker] = {}
 
+tickers_info[ticker]["Current Price"] = ticker_info["currentPrice"]
+
 # Prompt and access ChatGPT to get similar companies to the analysed one
 prompt = f"""prompt = f'List 4 US-listed companies in the "{industry}" industry, similar to {ticker}, 
 with valuation multiples available on yfinance. Output only a Python list of tickers."""
@@ -90,6 +92,8 @@ for t in tickers_list:
     peers_forward_PE = round(peers_info.get("forwardPE"), 2)
 
     tickers_info[t]["Multiple"] = {}
+
+    tickers_info[t]["Current Price"] = peers_info["currentPrice"]
 
     tickers_info[t]["Multiple"]["Trailing PE"] = peers_trailing_PE
     tickers_info[t]["Multiple"]["Forward PE"] = peers_forward_PE
@@ -313,7 +317,14 @@ avg_AAA_corp_bond = 4.4
 
 tickers_info[ticker]["Intrinsic Value"] = float(round((tickers_info[ticker]["Multiple"]["Last EPS"] * (PE_company_w_no_growth + growth_multiplier * tickers_info[ticker]["DCF"]["Estimate Growth"]) * avg_AAA_corp_bond) / r, 2))
 
+margin_of_safety = 0.65
+
+tickers_info[ticker]["Acceptable Buy Price"] = tickers_info[ticker]["Intrinsic Value"] * margin_of_safety
+tickers_info[ticker]["Buy/Sell"] = "Buy" if tickers_info[ticker]["Acceptable Buy Price"] <= tickers_info[ticker]["Current Price"] else "Sell"
+
 for t in tickers_list:
     tickers_info[t]["Intrinsic Value"] = float(round((tickers_info[t]["Multiple"]["Last EPS"] * (PE_company_w_no_growth + growth_multiplier * tickers_info[t]["DCF"]["Estimate Growth"]) * avg_AAA_corp_bond) / r, 2))
+    tickers_info[t]["Acceptable Buy Price"] = tickers_info[t]["Intrinsic Value"] * margin_of_safety
+    tickers_info[t]["Buy/Sell"] = "Buy" if tickers_info[t]["Acceptable Buy Price"] <= tickers_info[t]["Current Price"] else "Sell"
 
-print(tickers_info)
+#print(tickers_info)
