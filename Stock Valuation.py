@@ -164,24 +164,9 @@ fcf = fcf.sort_index()
 
 tickers_info[ticker]["DCF"]["FCF"] = fcf
 
-y0 = fcf.iloc[-3]
-y1 = fcf.iloc[-2]
-y2 = fcf.iloc[-1]
-
-drop_ratio = (y1 - y2) / y1
-
-if drop_ratio > 0.3:
-    prev_growth = y1 / y0
-    adjusted_y2 = y1 * prev_growth
-    fcf.iloc[-1] = adjusted_y2
-
-tickers_info[ticker]["DCF"]["Ajusted FCF"] = fcf
-
 # Calculate the growth
-fcf_growth = round(fcf.sort_index().pct_change().dropna() * 100, 2)
-historical_growth = fcf_growth.mean()
-
-historical_growth = 0.035
+fcf_growth = round(fcf.pct_change().dropna() * 100, 2)
+historical_growth = float(round(fcf_growth.mean(), 2))
 
 cagr_prompt = f"""Search for the forecasted CAGR of the "{industry}" industry **specifically** 
 from either Grand View Research (GVR) or Statista. If available, return **only** the CAGR number. 
@@ -202,7 +187,7 @@ Do not include any units, percent signs, or explanation."""
 
 cagr = 0.064
 
-growth = 0.8 * historical_growth + 0.2 * cagr
+growth = round(0.8 * historical_growth + 0.2 * cagr, 2)
 
 tickers_info[ticker]["DCF"]["Historical Growth"] = historical_growth
 tickers_info[ticker]["DCF"]["CAGR"] = cagr
@@ -222,13 +207,13 @@ ticker_PFCF = ticker_info["marketCap"] / fcf
 ticker_PFCF = float(round(ticker_PFCF.median(), 2))
 
 tickers_info[ticker]["DCF"]["PFCF"] = ticker_PFCF
-tickers_info[ticker]["DCF"]["TV - PFCF"] = projected_fcf[-1] * ticker_PFCF
+tickers_info[ticker]["DCF"]["TV - PFCF"] = round(projected_fcf[-1] * ticker_PFCF, 2)
 
 tnx = yf.Ticker("^TNX")
 
 r = (round(tnx.history(period="1d")["Close"].iloc[-1] , 2) + 3) / 100
 
-tickers_info[ticker]["DCF"]["TV - Perpetuity"] = float(projected_fcf[-1] * (1 + growth) / (r - growth))
+tickers_info[ticker]["DCF"]["TV - Perpetuity"] = float(round(projected_fcf[-1] * (1 + growth) / (r - growth), 2))
 
 discounted_fcf = []
 sum_dis_fcf = 0
@@ -240,11 +225,77 @@ for i in range(10):
     sum_dis_fcf += discounted_value
 
 tickers_info[ticker]["DCF"]["Discounted FCF"] = discounted_fcf
-tickers_info[ticker]["DCF"]["Discounted TV - PFCF"] = float(tickers_info[ticker]["DCF"]["TV - PFCF"] / ((1 + r) ** 10))
-tickers_info[ticker]["DCF"]["Discounted TV - Perpetuity"] = float(tickers_info[ticker]["DCF"]["TV - Perpetuity"] / ((1 + r) ** 10) )
-tickers_info[ticker]["DCF"]["Valuation - PFCF"] = float(discounted_value + tickers_info[ticker]["DCF"]["Discounted TV - PFCF"])
-tickers_info[ticker]["DCF"]["Valuation - Perpetuity"] = float(discounted_value + tickers_info[ticker]["DCF"]["Discounted TV - Perpetuity"])
+tickers_info[ticker]["DCF"]["Discounted TV - PFCF"] = float(round(tickers_info[ticker]["DCF"]["TV - PFCF"] / ((1 + r) ** 10), 2))
+tickers_info[ticker]["DCF"]["Discounted TV - Perpetuity"] = float(round(tickers_info[ticker]["DCF"]["TV - Perpetuity"] / ((1 + r) ** 10), 2))
+tickers_info[ticker]["DCF"]["Valuation - PFCF"] = float(round(sum_dis_fcf + tickers_info[ticker]["DCF"]["Discounted TV - PFCF"], 2))
+tickers_info[ticker]["DCF"]["Valuation - Perpetuity"] = float(round(sum_dis_fcf + tickers_info[ticker]["DCF"]["Discounted TV - Perpetuity"], 2))
 
 # Repeat the process to the others companies
+for t in tickers_list:
+    tickers_info[t]["DCF"] = {}
+    peers =  yf.Ticker(t)
+
+    peers_cashflow = peers.cashflow
+    peers_info = peers.info
+
+    try:
+        peers_last_4_years = peers_cashflow.columns[:4]
+    except Exception as e:
+        print(f"[{t}] Erro ao acessar colunas do cashflow: {e}")
+
+    if "Free Cash Flow" in peers_cashflow.index:
+        peers_fcf = peers_cashflow.loc["Free Cash Flow", peers_last_4_years]
+    else:
+        try:
+            peers_ocf = peers_cashflow.loc["Operating Cash Flow", peers_last_4_years]
+            peers_capex = peers_cashflow.loc["Capital Expenditures", peers_last_4_years]
+            peers_fcf = peers_ocf - peers_capex
+        except KeyError as e:
+            print(f"[{t}] Dados insuficientes para calcular FCF: {e}")
+
+    peers_fcf = peers_fcf.sort_index()
+
+    tickers_info[t]["DCF"]["FCF"] = peers_fcf
+
+    peers_fcf_growth = round(peers_fcf.pct_change().dropna() * 100, 2)
+    peers_historical_growth = float(round(peers_fcf_growth.mean(), 2))
+
+    peers_growth = round(0.8 * peers_historical_growth + 0.2 * cagr, 2)
+
+    tickers_info[t]["DCF"]["Historical Growth"] = peers_historical_growth
+    tickers_info[t]["DCF"]["CAGR"] = cagr
+    tickers_info[t]["DCF"]["Estimate Growth"] = peers_growth
+
+    peers_projected_fcf = []
+    peers_last_fcf = peers_fcf.iloc[-1]
+
+    for i in range(1, 11):
+        peers_projected_value = peers_last_fcf * ((1 + peers_growth / 100) ** i)
+        peers_projected_fcf.append(float(round(peers_projected_value, 2)))
+
+    tickers_info[t]["DCF"]["Projected FCF"] = peers_projected_fcf
+
+    peers_PFCF = peers_info["marketCap"] / peers_fcf
+    peers_PFCF = float(round(peers_PFCF.median(), 2))
+
+    tickers_info[t]["DCF"]["PFCF"] = peers_PFCF
+    tickers_info[t]["DCF"]["TV - PFCF"] = round(peers_projected_fcf[-1] * peers_PFCF, 2)
+
+    tickers_info[t]["DCF"]["TV - Perpetuity"] = float(round(peers_projected_fcf[-1] * (1 + peers_growth) / (r - peers_growth), 2))
+
+    peers_discounted_fcf = []
+    peers_sum_dis_fcf = 0
+
+    for i in range(10):
+        year = i + 1  
+        peers_discounted_value = peers_projected_fcf[i] / ((1 + r) ** year)
+        peers_discounted_fcf.append(float(round(peers_discounted_value, 2)))
+        peers_sum_dis_fcf += peers_discounted_value
+
+    tickers_info[t]["DCF"]["Discounted FCF"] = peers_discounted_fcf
+    tickers_info[t]["DCF"]["Discounted TV - PFCF"] = float(round(tickers_info[t]["DCF"]["TV - PFCF"] / ((1 + r) ** 10), 2))
+    tickers_info[t]["DCF"]["Discounted TV - Perpetuity"] = float(round(tickers_info[t]["DCF"]["TV - Perpetuity"] / ((1 + r) ** 10), 2))
+    tickers_info[t]["DCF"]["Valuation - PFCF"] = float(round(peers_sum_dis_fcf + tickers_info[t]["DCF"]["Discounted TV - PFCF"], 2))
+    tickers_info[t]["DCF"]["Valuation - Perpetuity"] = float(round(peers_sum_dis_fcf + tickers_info[t]["DCF"]["Discounted TV - Perpetuity"], 2))
 
 print(tickers_info)
