@@ -181,10 +181,6 @@ else:
 
 fcf = fcf.sort_index()
 
-if ticker == "KO":
-    last_year = fcf.index[-1]
-    fcf.loc[last_year] += 6_000_000_000
-
 tickers_info[ticker]["DCF"]["FCF"] = fcf
 
 # Calculate the growth
