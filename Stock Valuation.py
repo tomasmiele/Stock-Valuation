@@ -66,6 +66,8 @@ shares = income.loc["Basic Average Shares"].sort_index()
 eps = (net_income / shares).rename("EPS")
 eps.index = pd.to_datetime(eps.index)
 
+tickers_info[ticker]["Multiple"]["Last EPS"] = float(round(eps.iloc[-1], 2))
+
 price_df = ticker_price.reset_index().rename(columns={"Date": "date", "Close": "Price"})
 eps_df = eps.reset_index().rename(columns={"index": "date", "EPS": "EPS"})
 
@@ -99,11 +101,13 @@ for t in tickers_list:
     peers_net_income = peers_income.loc["Net Income"].sort_index()
     peers_shares = peers_income.loc["Basic Average Shares"].sort_index()
 
-    eps = (peers_net_income / peers_shares).rename("EPS")
-    eps.index = pd.to_datetime(eps.index)
+    peers_eps = (peers_net_income / peers_shares).rename("EPS")
+    peers_eps.index = pd.to_datetime(peers_eps.index)
+
+    tickers_info[t]["Multiple"]["Last EPS"] = float(round(peers_eps.iloc[-1], 2))
 
     peers_price_df = peers_price.reset_index().rename(columns={"Date": "date", "Close": "Price"})
-    peers_eps_df = eps.reset_index().rename(columns={"index": "date", "EPS": "EPS"})
+    peers_eps_df = peers_eps.reset_index().rename(columns={"index": "date", "EPS": "EPS"})
 
     peers_combined = pd.merge_asof(peers_price_df.sort_values("date"), peers_eps_df.sort_values("date"), on="date")
     peers_combined = peers_combined[peers_combined["date"].dt.year < pd.Timestamp.today().year]
@@ -161,6 +165,10 @@ else:
         print(f"[{ticker}] Dados insuficientes para calcular FCF: {e}")
 
 fcf = fcf.sort_index()
+
+if ticker == "KO":
+    last_year = fcf.index[-1]
+    fcf.loc[last_year] += 6_000_000_000
 
 tickers_info[ticker]["DCF"]["FCF"] = fcf
 
@@ -297,5 +305,15 @@ for t in tickers_list:
     tickers_info[t]["DCF"]["Discounted TV - Perpetuity"] = float(round(tickers_info[t]["DCF"]["TV - Perpetuity"] / ((1 + r) ** 10), 2))
     tickers_info[t]["DCF"]["Valuation - PFCF"] = float(round(peers_sum_dis_fcf + tickers_info[t]["DCF"]["Discounted TV - PFCF"], 2))
     tickers_info[t]["DCF"]["Valuation - Perpetuity"] = float(round(peers_sum_dis_fcf + tickers_info[t]["DCF"]["Discounted TV - Perpetuity"], 2))
+
+# Graham's Intrinsic Value Formula
+PE_company_w_no_growth = 7
+growth_multiplier = 1
+avg_AAA_corp_bond = 4.4
+
+tickers_info[ticker]["Intrinsic Value"] = float(round((tickers_info[ticker]["Multiple"]["Last EPS"] * (PE_company_w_no_growth + growth_multiplier * tickers_info[ticker]["DCF"]["Estimate Growth"]) * avg_AAA_corp_bond) / r, 2))
+
+for t in tickers_list:
+    tickers_info[t]["Intrinsic Value"] = float(round((tickers_info[t]["Multiple"]["Last EPS"] * (PE_company_w_no_growth + growth_multiplier * tickers_info[t]["DCF"]["Estimate Growth"]) * avg_AAA_corp_bond) / r, 2))
 
 print(tickers_info)
