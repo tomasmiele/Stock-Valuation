@@ -31,17 +31,28 @@ tickers_info[ticker]["Current Price"] = ticker_info["currentPrice"]
 prompt = f"""prompt = f'List 4 US-listed companies in the "{industry}" industry, similar to {ticker}, 
 with valuation multiples available on yfinance. Output only a Python list of tickers."""
 
-# response = client.chat.completions.create(
-#     model="gpt-4o",
-#     messages=[
-#         {"role": "user", "content": prompt}
-#     ]
-# )
+response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[
+        {"role": "user", "content": prompt}
+    ]
+)
 
-# content = response.choices[0].message.content
-# tickers_list = ast.literal_eval(content)
+content = response.choices[0].message.content
 
-tickers_list = ["PEP", "KDP", "MNST", "CCEP"]
+if content.startswith("```"):
+    content = content.strip().strip("`")
+    if content.startswith("python"):
+        content = content[len("python"):].strip()
+
+if "=" in content:
+    content = content.split("=", 1)[1].strip()
+
+try:
+    tickers_list = ast.literal_eval(content)
+except Exception as e:
+    print("Failed to parse tickers list:", e)
+    print("Raw content:", repr(content))
 
 for t in tickers_list:
     tickers_info[t] = {}
@@ -177,27 +188,28 @@ if ticker == "KO":
 tickers_info[ticker]["DCF"]["FCF"] = fcf
 
 # Calculate the growth
-fcf_growth = round(fcf.pct_change().dropna() * 100, 2)
+fcf_growth = round(fcf.pct_change().dropna(), 2)
 historical_growth = float(round(fcf_growth.mean(), 2))
 
 cagr_prompt = f"""Search for the forecasted CAGR of the "{industry}" industry **specifically** 
 from either Grand View Research (GVR) or Statista. If available, return **only** the CAGR number. 
 Do not include any units, percent signs, or explanation."""
 
-# cagr_response = client.chat.completions.create(
-#     model="gpt-4o",
-#     messages=[
-#         {"role": "user", "content": cagr_prompt}
-#     ]
-# )
+cagr_response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[
+        {"role": "user", "content": cagr_prompt}
+    ]
+)
 
-# cagr = cagr_response.choices[0].message.content.strip()
+cagr_raw = cagr_response.choices[0].message.content.strip()
 
-# match = re.search(r"[\d.]+", cagr)
-# if match:
-#     cagr = float(match.group())
+match = re.search(r"\d+(?:\.\d+)?", cagr_raw)
 
-cagr = 0.064
+if match:
+    cagr = float(match.group())
+else:
+    cagr = float(input("Type the CAGR (e.g. 0.065 for 6.5%): "))  
 
 growth = round(0.8 * historical_growth + 0.2 * cagr, 2)
 
@@ -210,7 +222,7 @@ projected_fcf = []
 last_fcf = fcf.iloc[-1]
 
 for i in range(1, 11):
-    projected_value = last_fcf * ((1 + growth / 100) ** i)
+    projected_value = last_fcf * ((1 + growth) ** i)
     projected_fcf.append(float(round(projected_value, 2)))
 
 tickers_info[ticker]["DCF"]["Projected FCF"] = projected_fcf
@@ -223,7 +235,7 @@ tickers_info[ticker]["DCF"]["TV - PFCF"] = round(projected_fcf[-1] * ticker_PFCF
 
 tnx = yf.Ticker("^TNX")
 
-r = (round(tnx.history(period="1d")["Close"].iloc[-1] , 2) + 3) / 100
+r = round((tnx.history(period="1d")["Close"].iloc[-1] + 3) / 100, 2)
 
 tickers_info[ticker]["DCF"]["TV - Perpetuity"] = float(round(projected_fcf[-1] * (1 + growth) / (r - growth), 2))
 
@@ -269,7 +281,7 @@ for t in tickers_list:
 
     tickers_info[t]["DCF"]["FCF"] = peers_fcf
 
-    peers_fcf_growth = round(peers_fcf.pct_change().dropna() * 100, 2)
+    peers_fcf_growth = round(peers_fcf.pct_change().dropna(), 2)
     peers_historical_growth = float(round(peers_fcf_growth.mean(), 2))
 
     peers_growth = round(0.8 * peers_historical_growth + 0.2 * cagr, 2)
@@ -282,7 +294,7 @@ for t in tickers_list:
     peers_last_fcf = peers_fcf.iloc[-1]
 
     for i in range(1, 11):
-        peers_projected_value = peers_last_fcf * ((1 + peers_growth / 100) ** i)
+        peers_projected_value = peers_last_fcf * ((1 + peers_growth) ** i)
         peers_projected_fcf.append(float(round(peers_projected_value, 2)))
 
     tickers_info[t]["DCF"]["Projected FCF"] = peers_projected_fcf
@@ -315,16 +327,40 @@ PE_company_w_no_growth = 7
 growth_multiplier = 1
 avg_AAA_corp_bond = 4.4
 
-tickers_info[ticker]["Intrinsic Value"] = float(round((tickers_info[ticker]["Multiple"]["Last EPS"] * (PE_company_w_no_growth + growth_multiplier * tickers_info[ticker]["DCF"]["Estimate Growth"]) * avg_AAA_corp_bond) / r, 2))
+tickers_info[ticker]["Intrinsic Value"] = float(round((tickers_info[ticker]["Multiple"]["Last EPS"] * (PE_company_w_no_growth + growth_multiplier * (tickers_info[ticker]["DCF"]["Estimate Growth"] * 100)) * avg_AAA_corp_bond) / (r * 100 - 3), 2))
 
-margin_of_safety = 0.65
+margin_of_safety = float(input("Type the margin of safety (e.g. 0.80 for 80%): "))
 
-tickers_info[ticker]["Acceptable Buy Price"] = tickers_info[ticker]["Intrinsic Value"] * margin_of_safety
-tickers_info[ticker]["Buy/Sell"] = "Buy" if tickers_info[ticker]["Acceptable Buy Price"] <= tickers_info[ticker]["Current Price"] else "Sell"
+tickers_info[ticker]["Acceptable Buy Price"] = round(tickers_info[ticker]["Intrinsic Value"] * margin_of_safety, 2)
+tickers_info[ticker]["Buy/Sell - Intrinsic Value"] = "uy" if tickers_info[ticker]["Acceptable Buy Price"] > tickers_info[ticker]["Current Price"] else "sell"
 
 for t in tickers_list:
-    tickers_info[t]["Intrinsic Value"] = float(round((tickers_info[t]["Multiple"]["Last EPS"] * (PE_company_w_no_growth + growth_multiplier * tickers_info[t]["DCF"]["Estimate Growth"]) * avg_AAA_corp_bond) / r, 2))
-    tickers_info[t]["Acceptable Buy Price"] = tickers_info[t]["Intrinsic Value"] * margin_of_safety
-    tickers_info[t]["Buy/Sell"] = "Buy" if tickers_info[t]["Acceptable Buy Price"] <= tickers_info[t]["Current Price"] else "Sell"
+    tickers_info[t]["Intrinsic Value"] = float(round((tickers_info[t]["Multiple"]["Last EPS"] * (PE_company_w_no_growth + growth_multiplier * (tickers_info[t]["DCF"]["Estimate Growth"] * 100)) * avg_AAA_corp_bond) / (r * 100 - 3), 2))
+    tickers_info[t]["Acceptable Buy Price"] = round(tickers_info[t]["Intrinsic Value"] * margin_of_safety, 2)
+    tickers_info[t]["Buy/Sell - Intrinsic Value"] = "buy" if tickers_info[t]["Acceptable Buy Price"] > tickers_info[t]["Current Price"] else "sell"
 
-#print(tickers_info)
+for k, v in tickers_info.items():
+    print(f"Stock {k}:\n")
+    print("Multiples:\n")
+    print(f"{k}'s Trailing PE: {v["Multiple"]["Trailing PE"]}")
+    print(f"{k}'s Forward PE: {v["Multiple"]["Forward PE"]}")
+    print(f"{k}'s 5y Avg Trailing PE: {v["Multiple"]["5y Avg Trailing PE"]}\n")
+    print(f"Considering the 5y average the PE should increase/drop: {v["Multiple"]["5y PE Diff"]}%")
+    print(f"Considering the industry average the PE should increase/drop: {v["Multiple"]["PE Diff Indust Avg"]}%")
+    print(f"Considering the industry forward average the PE should increase/drop: {v["Multiple"]["Forward PE Diff Indust Avg"]}%\n")
+
+    print("DCF:\n")
+    print(f"{k}'s Estimate Growth: {v["DCF"]["Estimate Growth"] * 100}%")
+    print(f"Discount Rate: {r * 100}%")
+    print(f"{k}'s Exit Multiple (P/FCF): {v["DCF"]["PFCF"]}\n")
+    print("Valuations:\n")
+    print(f"Valuation - PFCF: {v["DCF"]["Valuation - PFCF"]}")
+    print(f"Valuation - Perpetuity: {v["DCF"]["Valuation - Perpetuity"]}\n")
+
+    print(f"{k}'s Current Price: {v["Current Price"]}")
+    print(f"{k}'s Current EPS: {v["Multiple"]["Last EPS"]}")
+    print(f"{k}'s Intrinsic Value: {v["Intrinsic Value"]}")
+    print(f"{k}'s Acceptable Buy Price: {v["Acceptable Buy Price"]}")
+    print(f"You sould {v["Buy/Sell - Intrinsic Value"]} {k}'s stock according to the Intrinsic Value")
+
+    print("\n")
